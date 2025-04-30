@@ -66,7 +66,8 @@ class _VoiceMessageViewState extends State<VoiceMessageView> {
         noOfSamples: widget.config?.playerWaveStyle
                 ?.getSamplesForWidth(widget.screenWidth * 0.5) ??
             playerWaveStyle.getSamplesForWidth(widget.screenWidth * 0.5),
-      ).whenComplete(() => widget.onMaxDuration?.call(controller.maxDuration));
+      ).whenComplete(() => widget.onMaxDuration?.call(controller.maxDuration))
+          .catchError((error) => print(error));
     playerStateSubscription = controller.onPlayerStateChanged
         .listen((state) => _playerState.value = state);
   }

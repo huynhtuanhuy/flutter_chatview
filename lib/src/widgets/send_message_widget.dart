@@ -28,8 +28,10 @@ import 'package:chatview/src/widgets/chat_view_inherited_widget.dart';
 import 'package:chatview/src/widgets/chatui_textfield.dart';
 import 'package:chatview/src/widgets/reply_message_view.dart';
 import 'package:chatview/src/widgets/scroll_to_bottom_button.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:keyboard_height_plugin/keyboard_height_plugin.dart';
 
 import '../utils/constants/constants.dart';
 
@@ -43,6 +45,7 @@ class SendMessageWidget extends StatefulWidget {
     this.onReplyCloseCallback,
     this.messageConfig,
     this.replyMessageBuilder,
+    required this.isSendingMessage,
   }) : super(key: key);
 
   /// Provides call back when user tap on send button on text field.
@@ -66,17 +69,22 @@ class SendMessageWidget extends StatefulWidget {
   /// Provides a callback for the view when replying to message
   final CustomViewForReplyMessage? replyMessageBuilder;
 
+  final ValueNotifier<bool> isSendingMessage;
+
   @override
   State<SendMessageWidget> createState() => SendMessageWidgetState();
 }
 
 class SendMessageWidgetState extends State<SendMessageWidget> {
+  double _keyboardHeight = 0;
+  final KeyboardHeightPlugin _keyboardHeightPlugin = KeyboardHeightPlugin();
   final _textEditingController = TextEditingController();
   final ValueNotifier<ReplyMessage> _replyMessage =
       ValueNotifier(const ReplyMessage());
 
   ReplyMessage get replyMessage => _replyMessage.value;
-  final _focusNode = FocusNode();
+
+  // final _focusNode = FocusNode();
 
   ChatUser? get repliedUser => replyMessage.replyTo.isNotEmpty
       ? chatViewIW?.chatController.getUserFromId(replyMessage.replyTo)
@@ -87,6 +95,19 @@ class SendMessageWidgetState extends State<SendMessageWidget> {
       : repliedUser?.name ?? '';
 
   ChatUser? currentUser;
+
+  double get textInputBottom => _keyboardHeight;
+
+  @override
+  void initState() {
+    // TODO: implement initState
+    super.initState();
+    _keyboardHeightPlugin.onKeyboardHeightChanged((double height) {
+      setState(() {
+        _keyboardHeight = height;
+      });
+    });
+  }
 
   @override
   void didChangeDependencies() {
@@ -114,7 +135,7 @@ class SendMessageWidgetState extends State<SendMessageWidget> {
                   Positioned(
                     right: 0,
                     left: 0,
-                    bottom: 0,
+                    bottom: textInputBottom,
                     child: Container(
                       height: MediaQuery.of(context).size.height /
                           ((!kIsWeb && Platform.isIOS) ? 24 : 28),
@@ -126,7 +147,7 @@ class SendMessageWidgetState extends State<SendMessageWidget> {
                   Positioned(
                     right: 0,
                     left: 0,
-                    bottom: 0,
+                    bottom: textInputBottom,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -258,12 +279,13 @@ class SendMessageWidgetState extends State<SendMessageWidget> {
                                 valueListenable: _replyMessage,
                               ),
                               ChatUITextField(
-                                focusNode: _focusNode,
+                                // focusNode: _focusNode,
                                 textEditingController: _textEditingController,
                                 onPressed: _onPressed,
                                 sendMessageConfig: widget.sendMessageConfig,
                                 onRecordingComplete: _onRecordingComplete,
                                 onImageSelected: _onImageSelected,
+                                isSendingMessage: widget.isSendingMessage,
                               )
                             ],
                           ),
@@ -322,7 +344,7 @@ class SendMessageWidgetState extends State<SendMessageWidget> {
         voiceMessageDuration: message.voiceMessageDuration,
       );
     }
-    FocusScope.of(context).requestFocus(_focusNode);
+    // FocusScope.of(context).requestFocus(_focusNode);
     if (widget.onReplyCallback != null) widget.onReplyCallback!(replyMessage);
   }
 
@@ -332,17 +354,15 @@ class SendMessageWidgetState extends State<SendMessageWidget> {
   }
 
   double get _bottomPadding => (!kIsWeb && Platform.isIOS)
-      ? (_focusNode.hasFocus
-          ? bottomPadding1
-          : View.of(context).viewPadding.bottom > 0
-              ? bottomPadding2
-              : bottomPadding3)
+      ? (View.of(context).viewPadding.bottom > 0
+          ? bottomPadding2
+          : bottomPadding3)
       : bottomPadding3;
 
   @override
   void dispose() {
     _textEditingController.dispose();
-    _focusNode.dispose();
+    // _focusNode.dispose();
     _replyMessage.dispose();
     super.dispose();
   }

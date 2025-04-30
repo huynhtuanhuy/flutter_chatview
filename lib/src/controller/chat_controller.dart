@@ -72,7 +72,7 @@ class ChatController {
   List<ChatUser> otherUsers;
 
   /// Provides current user which is sending messages.
-  final ChatUser currentUser;
+  ChatUser currentUser;
 
   ChatController({
     required this.initialMessageList,
@@ -88,7 +88,6 @@ class ChatController {
   void dispose() {
     _showTypingIndicator.dispose();
     _replySuggestion.dispose();
-    scrollController.dispose();
     messageStreamController.close();
   }
 

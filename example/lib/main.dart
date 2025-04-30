@@ -94,6 +94,7 @@ class _ChatScreenState extends State<ChatScreen> {
       body: ChatView(
         chatController: _chatController,
         onSendTap: _onSendTap,
+        isSendingMessage: ValueNotifier(false),
         featureActiveConfig: const FeatureActiveConfig(
           lastSeenAgoBuilderVisibility: true,
           receiptsBuilderVisibility: true,

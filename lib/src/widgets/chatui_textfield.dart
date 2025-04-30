@@ -36,18 +36,19 @@ class ChatUITextField extends StatefulWidget {
   const ChatUITextField({
     Key? key,
     this.sendMessageConfig,
-    required this.focusNode,
+    // required this.focusNode,
     required this.textEditingController,
     required this.onPressed,
     required this.onRecordingComplete,
     required this.onImageSelected,
+    required this.isSendingMessage,
   }) : super(key: key);
 
   /// Provides configuration of default text field in chat.
   final SendMessageConfiguration? sendMessageConfig;
 
   /// Provides focusNode for focusing text field.
-  final FocusNode focusNode;
+  // final FocusNode focusNode;
 
   /// Provides functions which handles text field.
   final TextEditingController textEditingController;
@@ -61,6 +62,8 @@ class ChatUITextField extends StatefulWidget {
   /// Provides callback when user select images from camera/gallery.
   final StringsCallBack onImageSelected;
 
+  final ValueNotifier isSendingMessage;
+
   @override
   State<ChatUITextField> createState() => _ChatUITextFieldState();
 }
@@ -73,6 +76,15 @@ class _ChatUITextFieldState extends State<ChatUITextField> {
   RecorderController? controller;
 
   ValueNotifier<bool> isRecording = ValueNotifier(false);
+
+  ValueNotifier<PlayerState> recordPreviewState =
+      ValueNotifier(PlayerState.stopped);
+
+  StreamSubscription<PlayerState>? recordPreviewStateSubscription;
+
+  PlayerController? recordPreviewController;
+
+  String? recordPreviewPath;
 
   SendMessageConfiguration? get sendMessageConfig => widget.sendMessageConfig;
 
@@ -97,6 +109,8 @@ class _ChatUITextFieldState extends State<ChatUITextField> {
   ValueNotifier<TypeWriterStatus> composingStatus =
       ValueNotifier(TypeWriterStatus.typed);
 
+  late StreamSubscription<bool>? isSendingMessageSubscription;
+
   late Debouncer debouncer;
 
   @override
@@ -109,7 +123,14 @@ class _ChatUITextFieldState extends State<ChatUITextField> {
 
     if (!kIsWeb && (Platform.isIOS || Platform.isAndroid)) {
       controller = RecorderController();
+
+      recordPreviewController = PlayerController();
+      recordPreviewStateSubscription = recordPreviewController!
+          .onPlayerStateChanged
+          .listen((state) => recordPreviewState.value = state);
     }
+
+    widget.isSendingMessage.addListener(onSendingMessageUpdate);
   }
 
   @override
@@ -117,8 +138,16 @@ class _ChatUITextFieldState extends State<ChatUITextField> {
     debouncer.dispose();
     composingStatus.dispose();
     isRecording.dispose();
+    recordPreviewState.dispose();
+    recordPreviewController?.dispose();
+    recordPreviewStateSubscription?.cancel();
     _inputText.dispose();
+    widget.isSendingMessage.removeListener(onSendingMessageUpdate);
     super.dispose();
+  }
+
+  void onSendingMessageUpdate() {
+    setState(() {});
   }
 
   void attachListeners() {
@@ -170,10 +199,61 @@ class _ChatUITextFieldState extends State<ChatUITextField> {
                         ),
                   ),
                 )
-              else
+              else if (recordPreviewPath != null &&
+                  recordPreviewController != null &&
+                  !kIsWeb) ...[
+                IconButton(
+                  color: Colors.red,
+                  onPressed: () {
+                    recordPreviewController!.stopPlayer();
+                    setState(() {
+                      recordPreviewPath = null;
+                    });
+                  },
+                  icon: const Icon(Icons.delete_rounded),
+                ),
+                ValueListenableBuilder<PlayerState>(
+                  valueListenable: recordPreviewState,
+                  builder: (_, recordPreviewStateValue, child) {
+                    return IconButton(
+                      color: sendMessageConfig?.defaultSendButtonColor ??
+                          Colors.green,
+                      onPressed: recordPreviewStateValue.isPlaying
+                          ? () => recordPreviewController!.pausePlayer()
+                          : () {
+                              if (recordPreviewStateValue.isStopped) {
+                                recordPreviewController!.seekTo(0);
+                              }
+                              recordPreviewController!
+                                  .startPlayer(finishMode: FinishMode.pause);
+                            },
+                      icon: recordPreviewStateValue.isPlaying
+                          ? const Icon(Icons.pause_circle_filled)
+                          : const Icon(Icons.play_circle_fill),
+                    );
+                  },
+                ),
+                Expanded(
+                  child: AudioFileWaveforms(
+                    size: const Size(double.maxFinite, 50),
+                    playerController: recordPreviewController!,
+                    waveformType: WaveformType.long,
+                    playerWaveStyle: PlayerWaveStyle(
+                      fixedWaveColor:
+                          (voiceRecordingConfig?.waveStyle?.waveColor ??
+                                  Colors.black)
+                              .withOpacity(0.5),
+                      liveWaveColor:
+                          voiceRecordingConfig?.waveStyle?.waveColor ??
+                              Colors.black,
+                      spacing: 6,
+                    ),
+                  ),
+                ),
+              ] else
                 Expanded(
                   child: TextField(
-                    focusNode: widget.focusNode,
+                    // focusNode: widget.focusNode,
                     controller: widget.textEditingController,
                     style: textFieldConfig?.textStyle ??
                         const TextStyle(color: Colors.white),
@@ -207,98 +287,122 @@ class _ChatUITextFieldState extends State<ChatUITextField> {
                     ),
                   ),
                 ),
-              ValueListenableBuilder<String>(
-                valueListenable: _inputText,
-                builder: (_, inputTextValue, child) {
-                  if (inputTextValue.isNotEmpty) {
-                    return IconButton(
+              if (widget.isSendingMessage.value)
+                IconButton(
+                  onPressed: null,
+                  icon: SizedBox(
+                    height: 25,
+                    width: 25,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
                       color: sendMessageConfig?.defaultSendButtonColor ??
                           Colors.green,
-                      onPressed: (textFieldConfig?.enabled ?? true)
-                          ? () {
-                              widget.onPressed();
-                              _inputText.value = '';
-                            }
-                          : null,
-                      icon: sendMessageConfig?.sendButtonIcon ??
-                          const Icon(Icons.send),
-                    );
-                  } else {
-                    return Row(
-                      children: [
-                        if (!isRecordingValue) ...[
-                          if (sendMessageConfig?.enableCameraImagePicker ??
-                              true)
+                    ),
+                  ),
+                )
+              else
+                ValueListenableBuilder<String>(
+                  valueListenable: _inputText,
+                  builder: (_, inputTextValue, child) {
+                    if (inputTextValue.isNotEmpty ||
+                        recordPreviewPath != null) {
+                      return IconButton(
+                        color: sendMessageConfig?.defaultSendButtonColor ??
+                            Colors.green,
+                        onPressed: ((textFieldConfig?.enabled ?? true) ||
+                                recordPreviewPath != null)
+                            ? () {
+                                if (recordPreviewPath != null) {
+                                  widget.onRecordingComplete(recordPreviewPath);
+                                  setState(() {
+                                    recordPreviewPath = null;
+                                  });
+                                } else {
+                                  widget.onPressed();
+                                  _inputText.value = '';
+                                }
+                              }
+                            : null,
+                        icon: sendMessageConfig?.sendButtonIcon ??
+                            const Icon(Icons.send),
+                      );
+                    } else {
+                      return Row(
+                        children: [
+                          if (!isRecordingValue) ...[
+                            if (sendMessageConfig?.enableCameraImagePicker ??
+                                true)
+                              IconButton(
+                                constraints: const BoxConstraints(),
+                                onPressed: (textFieldConfig?.enabled ?? true)
+                                    ? () => _onIconPressed(
+                                          ImageSource.camera,
+                                          config: sendMessageConfig
+                                              ?.imagePickerConfiguration,
+                                        )
+                                    : null,
+                                icon: imagePickerIconsConfig
+                                        ?.cameraImagePickerIcon ??
+                                    Icon(
+                                      Icons.camera_alt_outlined,
+                                      color: imagePickerIconsConfig
+                                          ?.cameraIconColor,
+                                    ),
+                              ),
+                            if (sendMessageConfig?.enableGalleryImagePicker ??
+                                true)
+                              IconButton(
+                                constraints: const BoxConstraints(),
+                                onPressed: (textFieldConfig?.enabled ?? true)
+                                    ? () => _onIconPressed(
+                                          ImageSource.gallery,
+                                          config: sendMessageConfig
+                                              ?.imagePickerConfiguration,
+                                        )
+                                    : null,
+                                icon: imagePickerIconsConfig
+                                        ?.galleryImagePickerIcon ??
+                                    Icon(
+                                      Icons.image,
+                                      color: imagePickerIconsConfig
+                                          ?.galleryIconColor,
+                                    ),
+                              ),
+                          ],
+                          if ((sendMessageConfig?.allowRecordingVoice ??
+                                  false) &&
+                              !kIsWeb &&
+                              (Platform.isIOS || Platform.isAndroid))
                             IconButton(
-                              constraints: const BoxConstraints(),
                               onPressed: (textFieldConfig?.enabled ?? true)
-                                  ? () => _onIconPressed(
-                                        ImageSource.camera,
-                                        config: sendMessageConfig
-                                            ?.imagePickerConfiguration,
-                                      )
+                                  ? _recordOrStop
                                   : null,
-                              icon: imagePickerIconsConfig
-                                      ?.cameraImagePickerIcon ??
+                              icon: (isRecordingValue
+                                      ? voiceRecordingConfig?.stopIcon
+                                      : voiceRecordingConfig?.micIcon) ??
                                   Icon(
-                                    Icons.camera_alt_outlined,
+                                    isRecordingValue ? Icons.stop : Icons.mic,
                                     color:
-                                        imagePickerIconsConfig?.cameraIconColor,
+                                        voiceRecordingConfig?.recorderIconColor,
                                   ),
                             ),
-                          if (sendMessageConfig?.enableGalleryImagePicker ??
-                              true)
+                          if (isRecordingValue &&
+                              cancelRecordConfiguration != null)
                             IconButton(
-                              constraints: const BoxConstraints(),
-                              onPressed: (textFieldConfig?.enabled ?? true)
-                                  ? () => _onIconPressed(
-                                        ImageSource.gallery,
-                                        config: sendMessageConfig
-                                            ?.imagePickerConfiguration,
-                                      )
-                                  : null,
-                              icon: imagePickerIconsConfig
-                                      ?.galleryImagePickerIcon ??
-                                  Icon(
-                                    Icons.image,
-                                    color: imagePickerIconsConfig
-                                        ?.galleryIconColor,
-                                  ),
+                              onPressed: () {
+                                cancelRecordConfiguration?.onCancel?.call();
+                                _cancelRecording();
+                              },
+                              icon: cancelRecordConfiguration?.icon ??
+                                  const Icon(Icons.cancel_outlined),
+                              color: cancelRecordConfiguration?.iconColor ??
+                                  voiceRecordingConfig?.recorderIconColor,
                             ),
                         ],
-                        if ((sendMessageConfig?.allowRecordingVoice ?? false) &&
-                            !kIsWeb &&
-                            (Platform.isIOS || Platform.isAndroid))
-                          IconButton(
-                            onPressed: (textFieldConfig?.enabled ?? true)
-                                ? _recordOrStop
-                                : null,
-                            icon: (isRecordingValue
-                                    ? voiceRecordingConfig?.stopIcon
-                                    : voiceRecordingConfig?.micIcon) ??
-                                Icon(
-                                  isRecordingValue ? Icons.stop : Icons.mic,
-                                  color:
-                                      voiceRecordingConfig?.recorderIconColor,
-                                ),
-                          ),
-                        if (isRecordingValue &&
-                            cancelRecordConfiguration != null)
-                          IconButton(
-                            onPressed: () {
-                              cancelRecordConfiguration?.onCancel?.call();
-                              _cancelRecording();
-                            },
-                            icon: cancelRecordConfiguration?.icon ??
-                                const Icon(Icons.cancel_outlined),
-                            color: cancelRecordConfiguration?.iconColor ??
-                                voiceRecordingConfig?.recorderIconColor,
-                          ),
-                      ],
-                    );
-                  }
-                },
-              ),
+                      );
+                    }
+                  },
+                ),
             ],
           );
         },
@@ -333,7 +437,9 @@ class _ChatUITextFieldState extends State<ChatUITextField> {
           defaultTargetPlatform == TargetPlatform.android,
       "Voice messages are only supported with android and ios platform",
     );
-    if (!isRecording.value) {
+
+    bool _isAllowed = (await controller?.checkPermission() ?? false);
+    if (_isAllowed && !isRecording.value) {
       await controller?.record(
         sampleRate: voiceRecordingConfig?.sampleRate,
         bitRate: voiceRecordingConfig?.bitRate,
@@ -344,8 +450,16 @@ class _ChatUITextFieldState extends State<ChatUITextField> {
       isRecording.value = true;
     } else {
       final path = await controller?.stop();
+      if (path != null) {
+        setState(() {
+          recordPreviewPath = path;
+        });
+        await recordPreviewController!.preparePlayer(
+          path: path,
+          shouldExtractWaveform: true,
+        );
+      }
       isRecording.value = false;
-      widget.onRecordingComplete(path);
     }
   }
 
