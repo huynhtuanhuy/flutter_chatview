@@ -76,8 +76,6 @@ class SendMessageWidget extends StatefulWidget {
 }
 
 class SendMessageWidgetState extends State<SendMessageWidget> {
-  double _keyboardHeight = 0;
-  final KeyboardHeightPlugin _keyboardHeightPlugin = KeyboardHeightPlugin();
   final _textEditingController = TextEditingController();
   final ValueNotifier<ReplyMessage> _replyMessage =
       ValueNotifier(const ReplyMessage());
@@ -95,19 +93,6 @@ class SendMessageWidgetState extends State<SendMessageWidget> {
       : repliedUser?.name ?? '';
 
   ChatUser? currentUser;
-
-  double get textInputBottom => _keyboardHeight;
-
-  @override
-  void initState() {
-    // TODO: implement initState
-    super.initState();
-    _keyboardHeightPlugin.onKeyboardHeightChanged((double height) {
-      setState(() {
-        _keyboardHeight = height;
-      });
-    });
-  }
 
   @override
   void didChangeDependencies() {
@@ -135,7 +120,7 @@ class SendMessageWidgetState extends State<SendMessageWidget> {
                   Positioned(
                     right: 0,
                     left: 0,
-                    bottom: textInputBottom,
+                    bottom: 0,
                     child: Container(
                       height: MediaQuery.of(context).size.height /
                           ((!kIsWeb && Platform.isIOS) ? 24 : 28),
@@ -147,7 +132,7 @@ class SendMessageWidgetState extends State<SendMessageWidget> {
                   Positioned(
                     right: 0,
                     left: 0,
-                    bottom: textInputBottom,
+                    bottom: 0,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -362,6 +347,7 @@ class SendMessageWidgetState extends State<SendMessageWidget> {
   @override
   void dispose() {
     _textEditingController.dispose();
+    // _keyboardHeightPlugin.dispose();
     // _focusNode.dispose();
     _replyMessage.dispose();
     super.dispose();

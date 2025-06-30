@@ -31,6 +31,7 @@ import 'package:chatview/src/widgets/reaction_popup.dart';
 import 'package:chatview/src/widgets/suggestions/suggestions_config_inherited_widget.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:keyboard_height_plugin/keyboard_height_plugin.dart';
 import 'package:timeago/timeago.dart';
 import '../values/custom_time_messages.dart';
 import 'send_message_widget.dart';
@@ -166,6 +167,7 @@ class ChatView extends StatefulWidget {
 
 class _ChatViewState extends State<ChatView>
     with SingleTickerProviderStateMixin {
+  final KeyboardHeightPlugin _keyboardHeightPlugin = KeyboardHeightPlugin();
   final GlobalKey<SendMessageWidgetState> _sendMessageKey = GlobalKey();
   ValueNotifier<ReplyMessage> replyMessage =
       ValueNotifier(const ReplyMessage());
@@ -182,10 +184,27 @@ class _ChatViewState extends State<ChatView>
 
   FeatureActiveConfig get featureActiveConfig => widget.featureActiveConfig;
 
+  double _keyboardHeight = 0;
+  double get chatViewBottom => _keyboardHeight;
+
   @override
   void initState() {
     super.initState();
     setLocaleMessages('en', ReceiptsCustomMessages());
+    _keyboardHeightPlugin.onKeyboardHeightChanged((double height) {
+      print("onKeyboardHeightChanged ${height}");
+      setState(() {
+        _keyboardHeight = height;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    replyMessage.dispose();
+    chatViewIW?.showPopUp.dispose();
+    _keyboardHeightPlugin.dispose();
+    super.dispose();
   }
 
   @override
@@ -205,8 +224,8 @@ class _ChatViewState extends State<ChatView>
           return Stack(
             children: [
               Container(
-                height: chatBackgroundConfig.height ??
-                    MediaQuery.of(context).size.height,
+                height: (chatBackgroundConfig.height ??
+                    MediaQuery.of(context).size.height) - chatViewBottom,
                 width: chatBackgroundConfig.width ??
                     MediaQuery.of(context).size.width,
                 decoration: BoxDecoration(
@@ -356,12 +375,5 @@ class _ChatViewState extends State<ChatView>
     if (replyMessage.value.message.isNotEmpty) {
       replyMessage.value = const ReplyMessage();
     }
-  }
-
-  @override
-  void dispose() {
-    replyMessage.dispose();
-    chatViewIW?.showPopUp.dispose();
-    super.dispose();
   }
 }
